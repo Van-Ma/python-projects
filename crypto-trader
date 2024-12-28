@@ -1,0 +1,153 @@
+# -*- coding: utf-8 -*-
+"""
+@author: vaaan
+"""
+
+import requests
+import numpy as np
+from sklearn.linear_model import LinearRegression
+import matplotlib.pyplot as plt
+import sys
+
+#use API
+def get_prices(crypto, currency="usd"):
+    url = f"https://api.coingecko.com/api/v3/simple/price?ids={crypto}&vs_currencies={currency}"
+    response = requests.get(url)
+    
+    if response.status_code == 200:
+        return response.json()
+    else:
+        raise ValueError(f"Failed to fetch data for {crypto}. Check if the cryptocurrency ID is valid.")
+   
+
+def get_historical_prices(crypto, days=100, currency="usd"):
+    url = f"https://api.coingecko.com/api/v3/coins/{crypto}/market_chart?vs_currency={currency}&days={days}"
+    response = requests.get(url)
+    data = response.json()
+    return [price[1] for price in data['prices']]  
+
+def train_model(prices):
+    X = np.array(range(len(prices))).reshape(-1, 1)  
+    y = np.array(prices)
+    model = LinearRegression()
+    model.fit(X, y)
+    return model
+
+def predict_price(model, days_ahead):
+    future_day = np.array([[len(model.coef_) + days_ahead]])  
+    prediction = model.predict(future_day)
+    return prediction[0]
+
+#graph
+def plot_data(prices, model):
+    plt.plot(prices, color='green', label='Historical Data')
+    future_day = np.array([[len(model.coef_) + 5]]) 
+    prediction = model.predict(future_day)
+    plt.scatter(len(prices) + 5, prediction, color='red', label=f'Predicted: {prediction[0]:.2f}')
+    plt.legend()
+    plt.show()
+
+#simulate trading
+def trade_crypto(balance, crypto_name, action, amount, price):
+    cost = price * amount
+    
+    if action == "buy":
+        if balance >= cost:
+            balance -= cost
+            print(f"Successfully bought {amount} of {crypto_name} for ${cost:.2f}.")
+        else:
+            print("Insufficient balance.")
+    elif action == "sell":
+        balance += cost
+        print(f"Successfully sold {amount} of {crypto_name} for ${cost:.2f}.")
+    
+    return balance
+
+#exit program
+def safe_input(prompt):
+    user_input = input(prompt).strip().lower()
+    if user_input == "exit":
+        print("Exiting program...")
+        sys.exit()  
+    return user_input
+
+def main():
+    balance = 10000
+    while True:
+        print("\n")
+        print("1. Find current cryptocurrency price")
+        print("2. Predict cryptocurrency price")
+        print("3. Trade cryptocurrency")
+        print("'Exit' to exit program")
+        print(f"Your current balance: ${balance:.2f}")
+        print("\n")
+        print("Please select an option by typing the corresponding number: ")
+
+        user_option = safe_input(": ")
+
+        if user_option == "back":
+            print("Going back to directory...\n")
+            continue
+        #find price
+        if user_option == "1":    
+            crypto_name = safe_input("Enter the cryptocurrency ID (e.g., bitcoin, ethereum): ")
+            try:
+                prices = get_prices(crypto_name)
+                price_in_usd = prices[crypto_name]["usd"]
+                print(f"Current price for {crypto_name}: ${price_in_usd}\n")
+            except ValueError as e:
+                print(e)
+            except KeyError:
+                print(f"Invalid cryptocurrency ID or data not available for {crypto_name}.\n")
+                
+        #predict price
+        if user_option == "2":
+            crypto_name = safe_input("Enter cryptocurrency ID (e.g., bitcoin, ethereum): ")
+            
+            # Get current price
+            try:
+                prices = get_prices(crypto_name)
+                current_price = prices[crypto_name]["usd"]
+                print(f"Current price for {crypto_name}: ${current_price}\n")
+            except ValueError as e:
+                print(e)
+            except KeyError:
+                print(f"Invalid cryptocurrency ID or data not available for {crypto_name}.\n")
+                continue
+            
+           
+            days = int(safe_input("Enter the number of past days of data to use for prediction: "))
+            prices = get_historical_prices(crypto_name, days)
+            
+            if not prices:
+                print("Failed to fetch data for the given cryptocurrency.")
+                return
+            
+            model = train_model(prices)
+            future_price = predict_price(model, 5)  
+            
+            print(f"Predicted price for {crypto_name} in 5 days: ${future_price:.2f}")
+            plot_data(prices, model)
+        # trade
+        if user_option == "3":
+            crypto_name = safe_input("Enter cryptocurrency ID (e.g., bitcoin, ethereum): ")
+            action = safe_input("Do you want to buy or sell?: ")
+            amount = float(safe_input(f"Enter the amount of {crypto_name} to {action}: "))
+            
+            try:
+                prices = get_prices(crypto_name)
+                current_price = prices[crypto_name]["usd"]
+                print(f"Current price for {crypto_name}: ${current_price}\n")
+            except ValueError as e:
+                print(e)
+            except KeyError:
+                print(f"Invalid cryptocurrency ID or data not available for {crypto_name}.\n")
+                continue
+            
+            balance = trade_crypto(balance, crypto_name, action, amount, current_price)
+
+if __name__ == "__main__":
+    main()
+    
+    
+    
